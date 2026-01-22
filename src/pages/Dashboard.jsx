@@ -1,143 +1,109 @@
-import React, { useEffect, useState } from "react";
-import axios from "axios";
-import { auth } from "../services/firebase";
-import { onAuthStateChanged } from "firebase/auth";
-import { useNavigate } from "react-router-dom";
-const Dashboard = () => {
-  const [userId, setUserId] = useState(null);
-  const [zones, setZones] = useState([]);
-  const [loadingZones, setLoadingZones] = useState(true);
-  const [zonesError, setZonesError] = useState(null);
-  const navigate = useNavigate();
+import { useEffect, useState } from 'react';
+import axios from 'axios';
+import { useAuth } from '../context/AuthContext';
 
-  const ZONES_API_BASE_URL = import.meta.env.VITE_ZONES_API_BASE_URL || "http://localhost:5000";
+export default function Dashboard() {
+    const [pendingUsers, setPendingUsers] = useState([]);
+    const { currentUser, logout } = useAuth();
 
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) =>
-      setUserId(user ? user.uid : null)
-    );
-    return () => unsubscribe();
-  }, []);
-
-  useEffect(() => {
-    const fetchZones = async () => {
-      try {
-        if (!auth.currentUser) return; // Wait for auth
-        setZonesError(null);
-        const token = await auth.currentUser.getIdToken();
-        const apiUrl = ZONES_API_BASE_URL;
-        const res = await axios.get(apiUrl, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        const zonesData = Array.isArray(res.data) ? res.data : [];
-        setZones(zonesData);
-      } catch (err) {
-        console.error("Error fetching zones", err);
-        setZonesError("Failed to load zones.");
-      } finally {
-        setLoadingZones(false);
-      }
+    const handleLogout = async () => {
+        try {
+            await logout();
+            // Navigation to login will be handled by the protected route or auth state change
+        } catch (error) {
+            console.error("Failed to log out", error);
+        }
     };
 
-    if (userId) { // efficient dependency
-      fetchZones();
-      const interval = setInterval(fetchZones, 5000);
-      return () => clearInterval(interval);
-    }
-  }, [userId]); // Run when user logs in
+    const fetchPendingUsers = async () => {
+        if (!currentUser) return;
+        const token = await currentUser.getIdToken();
+        try {
+            const res = await axios.get(`${import.meta.env.VITE_ZONES_API_BASE_URL}/api/admin/pending-users`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            setPendingUsers(res.data);
+        } catch (err) {
+            console.error(err);
+            alert('Error fetching pending users');
+        }
+    };
 
-  return (
-    <div className="min-h-screen p-5 bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500">
-      <h1 className="text-3xl md:text-4xl font-bold mb-6 text-white underline underline-offset-8">
-        Parking Zones
-      </h1>
+    useEffect(() => {
+        fetchPendingUsers();
+    }, [currentUser]);
 
-      {zonesError && (
-        <div className="mb-4 rounded-lg bg-red-500/20 border border-red-500/50 p-4 text-white">
-          {zonesError}
-        </div>
-      )}
+    const handleApprove = async (uid) => {
+        const token = await currentUser.getIdToken();
+        try {
+            await axios.patch(`${import.meta.env.VITE_ZONES_API_BASE_URL}/api/admin/approve-user/${uid}`, {}, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            fetchPendingUsers(); // Refresh
+        } catch (err) {
+            alert('Failed to approve');
+        }
+    };
 
-      {loadingZones && (
-        <div className="text-white text-lg font-bold">Loading Zones...</div>
-      )}
+    const handleReject = async (uid) => {
+        if (!confirm("Are you sure you want to reject and remove this user?")) return;
+        const token = await currentUser.getIdToken();
+        try {
+            await axios.patch(`${import.meta.env.VITE_ZONES_API_BASE_URL}/api/admin/reject-user/${uid}`, {}, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            fetchPendingUsers(); // Refresh
+        } catch (err) {
+            alert('Failed to reject');
+        }
+    };
 
-      {!loadingZones && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-          {zones.map((zone) => {
-            // Backend provides computed fields
-            const reserved = zone.reserved || 0;
-            const prebooked = zone.prebooked || 0;
-            const capacity = zone.capacity || 0;
-            // Use server-provided availability
-            const available = zone.available !== undefined ? zone.available : (capacity - reserved - prebooked);
-            const isFull = available <= 0;
-
-            return (
-              <div
-                key={zone._id}
-                className="border border-white/30 p-4 rounded-xl bg-white/10 backdrop-blur-sm shadow-xl hover:shadow-2xl transition cursor-pointer flex flex-col justify-between"
-                onClick={() => navigate("/map", { state: zone })}
-              >
-                <div>
-                  <h2 className="text-xl font-bold text-white mb-4">{zone.name || "Unnamed Zone"}</h2>
-                  <div className="space-y-2 text-white/90">
-                    <div className="flex justify-between">
-                      <span>Capacity:</span>
-                      <span className="font-bold">{capacity}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Reserved:</span>
-                      <span className="font-bold">{zone.reserved || 0}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Prebooked:</span>
-                      <span className="font-bold">{zone.prebooked || 0}</span>
-                    </div>
-                    {/* Occupied/Reserved details removed as they are no longer tracked individually */}
-                    <div className="mt-2 pt-2 border-t border-white/20 flex justify-between text-lg">
-                      <span className="font-bold">Available:</span>
-                      <span className={`font-bold ${!isFull ? "text-green-300" : "text-red-300"}`}>
-                        {isFull ? "Full" : available}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-6 flex gap-2">
-                  <button
-                    className="flex-1 bg-white text-purple-700 font-bold py-2 rounded shadow hover:bg-gray-100 transition text-sm"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      navigate("/map", { state: zone });
+    return (
+        <div style={{ padding: '20px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h1>Admin Dashboard</h1>
+                <button
+                    onClick={handleLogout}
+                    style={{
+                        padding: '10px 20px',
+                        backgroundColor: '#ff4444',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '5px',
+                        cursor: 'pointer',
+                        fontWeight: 'bold'
                     }}
-                  >
-                    Park Now
-                  </button>
-                  <button
-                    className="flex-1 bg-yellow-400 text-purple-900 font-bold py-2 rounded shadow hover:bg-yellow-300 transition text-sm"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      // Navigate to PreBooking with selected zone
-                      navigate("/prebooking", { state: { zoneId: zone._id } });
-                    }}
-                  >
-                    Pre-Book
-                  </button>
-                </div>
-              </div>
-            );
-          })}
+                >
+                    Log Out
+                </button>
+            </div>
+
+            <h2 style={{ marginTop: '20px' }}>Pending Approvals</h2>
+            {pendingUsers.length === 0 ? <p>No pending users.</p> : (
+                <table border="1" cellPadding="10" style={{ width: '100%', borderCollapse: 'collapse', marginTop: '10px' }}>
+                    <thead>
+                        <tr>
+                            <th>Email</th>
+                            <th>UID</th>
+                            <th>Joined At</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {pendingUsers.map(user => (
+                            <tr key={user.uid}>
+                                <td>{user.email}</td>
+                                <td>{user.uid}</td>
+                                <td>{new Date(user.createdAt).toLocaleString()}</td>
+                                <td>
+                                    <button onClick={() => handleApprove(user.uid)} style={{ marginRight: '10px', backgroundColor: 'lightgreen', padding: '5px 10px', cursor: 'pointer' }}>Approve</button>
+                                    <button onClick={() => handleReject(user.uid)} style={{ backgroundColor: 'salmon', padding: '5px 10px', cursor: 'pointer' }}>Reject</button>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            )}
         </div>
-      )}
-
-      {!loadingZones && zones.length === 0 && !zonesError && (
-        <div className="text-white text-center mt-10 opacity-70">No zones found.</div>
-      )}
-    </div>
-  );
-};
-
-export default Dashboard;
-
-
+    );
+}
