@@ -112,7 +112,7 @@ export default function PreBooking() {
   };
 
   const handleCancel = async (id) => {
-    if (!confirm("Cancel parking?")) return;
+    if (!confirm("Cancel Booking?")) return;
     setProcessing(true);
     try {
       const token = await auth.currentUser.getIdToken();
