@@ -18,7 +18,7 @@ const MyReservations = () => {
   const RESERVATIONS_API_BASE_URL = import.meta.env.VITE_ZONES_API_BASE_URL || "http://localhost:5000";
 
   const cancelReservation = async (reservationId) => {
-    if (!window.confirm("Cancel this booking?")) return;
+    if (!window.confirm("Do you really want to cancel?")) return;
 
     try {
       setCancellingId(reservationId);
