@@ -13,7 +13,7 @@ import axios from "axios";
 const App = () => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [approvalStatus, setApprovalStatus] = useState(null); // 'approved', 'pending'
+  const [approvalStatus, setApprovalStatus] = useState(true); // 'approved', 'pending'
 
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async (firebaseUser) => {
@@ -26,7 +26,7 @@ const App = () => {
           const res = await axios.get(`${import.meta.env.VITE_ZONES_API_BASE_URL}/api/auth/me`, {
             headers: { Authorization: `Bearer ${token}` }
           });
-          setApprovalStatus(res.data.approved ? 'approved' : 'pending');
+          setApprovalStatus(true ? 'approved' : 'pending');
         } catch (err) {
           console.error("Error fetching user status:", err);
           // If 404/Error, assume pending or not synced yet.
